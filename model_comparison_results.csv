@@ -1,0 +1,6 @@
+Model,Best Params,Accuracy,Precision,Recall,F1-Score,ROC-AUC,Train Time (s),Predict Time (s)
+Logistic Regression,{'C': 10.0},0.974,0.0488,1.0,0.093,0.9997,8.217,0.0006
+Decision Tree,"{'max_depth': None, 'min_samples_split': 2}",1.0,1.0,1.0,1.0,1.0,0.838,0.0005
+KNN,"{'n_neighbors': 5, 'weights': 'distance'}",0.9933,0.1,0.5,0.1667,0.7447,0.857,0.0604
+Random Forest,"{'max_depth': 20, 'n_estimators': 200}",0.998,0.3333,0.5,0.4,0.9993,10.613,0.1362
+XGBoost,"{'learning_rate': 0.05, 'max_depth': 6, 'n_estimators': 200}",0.9987,0.5,1.0,0.6667,1.0,5.821,0.0072
