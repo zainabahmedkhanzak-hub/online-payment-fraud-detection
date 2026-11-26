@@ -19,60 +19,34 @@ from imblearn.over_sampling import SMOTE
 from xgboost import XGBClassifier
 
 
-def load_or_generate_data(csv_path="transactions.csv", n_samples=10000, random_state=42):
-    try:
-        df = pd.read_csv(csv_path)
-        print(f"Loaded dataset from {csv_path} with shape {df.shape}")
-        return df
-    except FileNotFoundError:
-        print("CSV not found; generating 10,000 synthetic online payment transactions...")
-        rng = np.random.default_rng(random_state)
-        tx_types = ["TRANSFER", "PAYMENT", "CARD_PAYMENT", "CASH_OUT"]
-        categories = ["Electronics", "Groceries", "Travel", "Gaming", "Utilities", "Fashion"]
-        countries = ["PK", "AE", "GB", "US", "SA"]
-
-        amount = np.round(rng.lognormal(mean=4.2, sigma=1.1, size=n_samples), 2)
-        tx_type = rng.choice(tx_types, size=n_samples, p=[0.25, 0.35, 0.25, 0.15])
-        merchant_cat = rng.choice(categories, size=n_samples)
-        country = rng.choice(countries, size=n_samples, p=[0.50, 0.15, 0.15, 0.12, 0.08])
-        tx_hour = rng.integers(0, 24, size=n_samples)
-        device_risk = np.clip(rng.normal(0.35, 0.20, size=n_samples), 0.01, 0.99)
-        ip_risk = np.clip(rng.normal(0.35, 0.22, size=n_samples), 0.01, 0.99)
-
-        risk_score = (
-            0.0025 * amount
-            + 1.8 * device_risk
-            + 1.7 * ip_risk
-            + np.where(np.isin(tx_type, ["TRANSFER", "CASH_OUT"]), 1.1, 0.0)
-            + np.where((tx_hour < 5) | (tx_hour > 22), 0.7, 0.0)
-            + np.where(country != "PK", 0.5, 0.0)
-            - 4.4
-        )
-        prob = 1 / (1 + np.exp(-risk_score))
-        fraud_label = rng.binomial(1, np.clip(prob, 0.005, 0.95))
-
-        return pd.DataFrame({
-            "transaction_amount": amount,
-            "transaction_type": tx_type,
-            "merchant_category": merchant_cat,
-            "country": country,
-            "transaction_hour": tx_hour,
-            "device_risk_score": np.round(device_risk, 3),
-            "ip_risk_score": np.round(ip_risk, 3),
-            "is_fraud": fraud_label
-        })
-
-
 def main():
-    df = load_or_generate_data("transactions.csv")
+    csv_path = "transactions.csv"  # Apni downloaded CSV ka naam yahan check kar lo
+    df = pd.read_csv(csv_path)
+
+    # Target column standardize karo
+    if "isFraud" in df.columns and "is_fraud" not in df.columns:
+        df = df.rename(columns={"isFraud": "is_fraud"})
+
+    # Extra/ID columns drop karo
+    drop_cols = [c for c in ["nameOrig", "nameDest", "isFlaggedFraud"] if c in df.columns]
+    df = df.drop(columns=drop_cols)
+
     df = df.drop_duplicates().dropna(subset=["is_fraud"])
+
+    # Agar dataset 10,000 rows se bara hai to stratified sample lo (fast & clean comparison ke liye)
+    if len(df) > 10000:
+        df, _ = train_test_split(
+            df, train_size=10000, stratify=df["is_fraud"].astype(int), random_state=42
+        )
 
     target_col = "is_fraud"
     X = df.drop(columns=[target_col])
     y = df[target_col].astype(int)
 
+    print("Dataset shape used:", df.shape)
     print("Class distribution:\n", y.value_counts(normalize=True).round(4))
 
+    # 70% Train, 15% Validation, 15% Test (stratified)
     X_train_full, X_test, y_train_full, y_test = train_test_split(
         X, y, test_size=0.15, stratify=y, random_state=42
     )
@@ -80,7 +54,7 @@ def main():
         X_train_full, y_train_full, test_size=0.1765, stratify=y_train_full, random_state=42
     )
 
-    cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
+    cat_cols = X.select_dtypes(include=["object", "str", "category"]).columns.tolist()
     num_cols = [c for c in X.columns if c not in cat_cols]
 
     preprocessor = ColumnTransformer([
@@ -89,9 +63,9 @@ def main():
     ])
 
     X_train_proc = preprocessor.fit_transform(X_train)
-    X_val_proc = preprocessor.transform(X_val)
     X_test_proc = preprocessor.transform(X_test)
 
+    # SMOTE sirf training data par (data leakage se bachne ke liye)
     smote = SMOTE(random_state=42)
     X_train_bal, y_train_bal = smote.fit_resample(X_train_proc, y_train)
 
